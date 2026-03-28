@@ -897,6 +897,98 @@ describe('API CRUD operations', () => {
     expect(transactions[0].notes).toBeNull();
   });
 
+  test('Transactions: addTransactions keeps explicit category when a rule would set another', async () => {
+    const accountId = await api.createAccount({ name: 'explicit-cat-api' }, 0);
+    const groupId = await api.createCategoryGroup({
+      name: 'explicit-cat-group',
+    });
+    const ruleCategoryId = await api.createCategory({
+      name: 'RuleWinsWithoutExplicit',
+      group_id: groupId,
+    });
+    const explicitCategoryId = await api.createCategory({
+      name: 'CallerExplicitCat',
+      group_id: groupId,
+    });
+    const payeeId = await api.createPayee({ name: 'ExplicitCatPayee' });
+
+    await api.createRule({
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [{ field: 'payee', op: 'is', value: payeeId }],
+      actions: [{ op: 'set', field: 'category', value: ruleCategoryId }],
+    });
+
+    await api.addTransactions(
+      accountId,
+      [
+        {
+          date: '2023-11-05',
+          payee_name: 'ExplicitCatPayee',
+          amount: -1700,
+          category: explicitCategoryId,
+        },
+      ],
+      { learnCategories: false, runTransfers: false },
+    );
+
+    const transactions = await api.getTransactions(
+      accountId,
+      '2023-11-01',
+      '2023-11-30',
+    );
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].category).toBe(explicitCategoryId);
+  });
+
+  test('Transactions: importTransactions keeps explicit category when a rule would set another', async () => {
+    const accountId = await api.createAccount(
+      { name: 'import-explicit-cat-api' },
+      0,
+    );
+    const groupId = await api.createCategoryGroup({
+      name: 'import-explicit-cat-group',
+    });
+    const ruleCategoryId = await api.createCategory({
+      name: 'ImportRuleCatOnly',
+      group_id: groupId,
+    });
+    const explicitCategoryId = await api.createCategory({
+      name: 'ImportCallerCat',
+      group_id: groupId,
+    });
+    const payeeId = await api.createPayee({ name: 'ImportExplicitCatPayee' });
+
+    await api.createRule({
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [{ field: 'payee', op: 'is', value: payeeId }],
+      actions: [{ op: 'set', field: 'category', value: ruleCategoryId }],
+    });
+
+    const result = await api.importTransactions(accountId, [
+      {
+        account: accountId,
+        date: '2023-11-06',
+        payee_name: 'ImportExplicitCatPayee',
+        amount: -1800,
+        category: explicitCategoryId,
+        imported_id: 'import-explicit-cat-api-1',
+      },
+    ]);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.added).toHaveLength(1);
+
+    const transactions = await api.getTransactions(
+      accountId,
+      '2023-11-01',
+      '2023-11-30',
+    );
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].category).toBe(explicitCategoryId);
+  });
+
   test('Transactions: reimportDeleted=false prevents reimporting deleted transactions', async () => {
     const accountId = await api.createAccount({ name: 'test-account' }, 0);
 

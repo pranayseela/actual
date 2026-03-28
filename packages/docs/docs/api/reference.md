@@ -176,6 +176,8 @@ If the amounts of the sub-transactions do not equal the total amount
 of the transaction, currently the API call will succeed but an error
 will be displayed within the app.
 
+During `addTransactions` and `importTransactions`, rules run on the **parent** row; the explicit-field preservation described above applies to that parent, not individually to each object in `subtransactions`.
+
 #### Transfers
 
 Existing transfers will have the `transfer_id` field which points to the transaction on the other side. **You should not change this** or you will cause unexpected behavior. (You are allowed to set this when importing, however.)
@@ -197,6 +199,8 @@ This method has the following optional flags:
 - `runTransfers`: create transfers for transactions where transfer payee is given (defaults to false)
 - `learnCategories`: update Rules based on the category field in the transactions (defaults to false)
 
+Rules still run on each transaction, but **any field you set to a non-null value** (for example `category`, `notes`, or `payee`) is restored after rules are applied, so your importer or script keeps those values. Omitted fields or fields set to `null` can still be filled or changed by rules.
+
 This method is mainly for custom importers that want to skip all the automatic stuff because it wants to create raw data. You probably want to use `importTransactions`.
 
 #### `importTransactions`
@@ -205,6 +209,8 @@ This method is mainly for custom importers that want to skip all the automatic s
 
 Adds multiple transactions at once, while going through the same process as importing a file or downloading transactions from a bank.
 In particular, all rules are run on the specified transactions before adding them.
+**Non-null fields you provide** on each row (such as `category` or `notes`) are kept after rules run; rules cannot overwrite those explicit values.
+
 Use `addTransactions` instead for adding raw transactions without post-processing.
 
 The import will "reconcile" transactions to avoid adding duplicates. Transactions with the same `imported_id` will never be added more than once. Otherwise, the system will match transactions with the same amount and with similar dates and payees and try to avoid duplicates. If not using `imported_id` you should check the results after importing.
