@@ -350,6 +350,8 @@ async function normalizeTransactions(
     // Strip off the irregular properties
     const { payee_name: originalPayeeName, subtransactions, ...rest } = trans;
     trans = rest;
+    // Fields the caller set to a non-null value before normalization; restored after
+    // runRules so rules cannot override explicit API/import input (#7171).
     const explicitFields = Object.entries(rest)
       .filter(([, value]) => value != null)
       .map(([field]) => field);
@@ -390,7 +392,13 @@ async function normalizeTransactions(
   return { normalized, payeesToCreate };
 }
 
-/** After rules run, restore fields the caller set with non-null values (see #7171). */
+/**
+ * After `runRules`, copy back each field that was non-null on the incoming
+ * transaction before rules ran. Rule actions must not replace those values
+ * (API `addTransactions`, file import, and reconcile paths). Bank-sync rows use
+ * `explicitFields: []` because provider payloads are not “explicit user overrides”
+ * in that sense. Null/omitted fields are not listed and remain rule-derived.
+ */
 function mergeExplicitFieldsOntoRuleResult(
   transAfterRules,
   originalTrans,
@@ -470,6 +478,7 @@ async function normalizeBankSyncTransactions(transactions, acctId) {
     trans.account = acctId;
     trans.payee = await resolvePayee(trans, payeeName, payeesToCreate);
 
+    // No explicitFields: bank rows are normalized from the provider; rules should apply.
     normalized.push({
       payee_name: payeeName,
       explicitFields: [],

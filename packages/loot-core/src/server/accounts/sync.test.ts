@@ -541,6 +541,34 @@ describe('Account sync', () => {
     expect(addedTransaction.notes).toBe('from api');
   });
 
+  test('addTransactions does not override explicitly provided payee when rule sets another payee', async () => {
+    const { id: acctId } = await prepareDatabase();
+
+    const explicitPayeeId = await db.insertPayee({ name: 'ExplicitPayee' });
+    const ruleTargetPayeeId = await db.insertPayee({ name: 'RulePayee' });
+
+    await insertRule({
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [{ op: 'is', field: 'imported_payee', value: 'SharedName' }],
+      actions: [{ op: 'set', field: 'payee', value: ruleTargetPayeeId }],
+    });
+
+    await addTransactions(acctId, [
+      {
+        date: '2017-10-21',
+        payee_name: 'SharedName',
+        imported_payee: 'SharedName',
+        payee: explicitPayeeId,
+        amount: -2947,
+      },
+    ]);
+
+    const [addedTransaction] = await getAllTransactions();
+    expect(addedTransaction.payee).toBe(explicitPayeeId);
+    expect(addedTransaction.payee).not.toBe(ruleTargetPayeeId);
+  });
+
   test('reconcile does not override explicitly provided category when rules match', async () => {
     const { id: acctId } = await prepareDatabase();
 
@@ -580,6 +608,31 @@ describe('Account sync', () => {
     const [addedTransaction] = await getAllTransactions();
     expect(addedTransaction.category).toBe(explicitCategoryId);
     expect(addedTransaction.category).not.toBe(ruleCategoryId);
+  });
+
+  test('reconcile does not override explicitly provided notes when rules match', async () => {
+    const { id: acctId } = await prepareDatabase();
+
+    const payeeId = await db.insertPayee({ name: 'ReconcileNotePayee' });
+    await insertRule({
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [{ op: 'is', field: 'payee', value: payeeId }],
+      actions: [{ op: 'set', field: 'notes', value: 'from rule' }],
+    });
+
+    await reconcileTransactions(acctId, [
+      {
+        date: '2020-01-02',
+        payee_name: 'ReconcileNotePayee',
+        amount: -2947,
+        notes: 'from import',
+        imported_id: 'reconcile-explicit-notes-1',
+      },
+    ]);
+
+    const [addedTransaction] = await getAllTransactions();
+    expect(addedTransaction.notes).toBe('from import');
   });
 
   test("reconcile does not merge transactions with different 'imported_id' values", async () => {
