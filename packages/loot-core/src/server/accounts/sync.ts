@@ -390,6 +390,19 @@ async function normalizeTransactions(
   return { normalized, payeesToCreate };
 }
 
+/** After rules run, restore fields the caller set with non-null values (see #7171). */
+function mergeExplicitFieldsOntoRuleResult(
+  transAfterRules,
+  originalTrans,
+  explicitFields: string[],
+) {
+  const merged = { ...transAfterRules };
+  for (const field of explicitFields) {
+    merged[field] = originalTrans[field];
+  }
+  return merged;
+}
+
 async function normalizeBankSyncTransactions(transactions, acctId) {
   const payeesToCreate = new Map();
 
@@ -459,6 +472,7 @@ async function normalizeBankSyncTransactions(transactions, acctId) {
 
     normalized.push({
       payee_name: payeeName,
+      explicitFields: [],
       trans: {
         amount: amountToInteger(trans.amount),
         payee: trans.payee,
@@ -699,9 +713,14 @@ export async function matchTransactions(
     payee_name,
     trans: originalTrans,
     subtransactions,
+    explicitFields = [],
   } of normalized) {
-    // Run the rules
-    const trans = await runRules(originalTrans, accountsMap);
+    const transAfterRules = await runRules(originalTrans, accountsMap);
+    const trans = mergeExplicitFieldsOntoRuleResult(
+      transAfterRules,
+      originalTrans,
+      explicitFields,
+    );
 
     let match = null;
     let fuzzyDataset = null;
@@ -885,14 +904,12 @@ export async function addTransactions(
     subtransactions,
     explicitFields,
   } of normalized) {
-    // Run the rules
-    const trans = await runRules(originalTrans, accountsMap);
-
-    // Rules should enrich missing fields but not override explicit values provided by API clients.
-    const transWithExplicitFields = { ...trans };
-    for (const field of explicitFields) {
-      transWithExplicitFields[field] = originalTrans[field];
-    }
+    const transAfterRules = await runRules(originalTrans, accountsMap);
+    const transWithExplicitFields = mergeExplicitFieldsOntoRuleResult(
+      transAfterRules,
+      originalTrans,
+      explicitFields,
+    );
 
     const finalTransaction = {
       id: uuidv4(),

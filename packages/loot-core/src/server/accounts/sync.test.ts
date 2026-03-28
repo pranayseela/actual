@@ -517,6 +517,71 @@ describe('Account sync', () => {
     expect(addedTransaction.category).not.toBe(ruleCategoryId);
   });
 
+  test('addTransactions does not override explicitly provided notes', async () => {
+    const { id: acctId } = await prepareDatabase();
+
+    const payeeId = await db.insertPayee({ name: 'NotePayee' });
+    await insertRule({
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [{ op: 'is', field: 'payee', value: payeeId }],
+      actions: [{ op: 'set', field: 'notes', value: 'from rule' }],
+    });
+
+    await addTransactions(acctId, [
+      {
+        date: '2017-10-21',
+        payee_name: 'NotePayee',
+        amount: -2947,
+        notes: 'from api',
+      },
+    ]);
+
+    const [addedTransaction] = await getAllTransactions();
+    expect(addedTransaction.notes).toBe('from api');
+  });
+
+  test('reconcile does not override explicitly provided category when rules match', async () => {
+    const { id: acctId } = await prepareDatabase();
+
+    await db.insertCategoryGroup({
+      id: 'group2',
+      name: 'group2',
+    });
+    const explicitCategoryId = await db.insertCategory({
+      id: 'import-cat',
+      name: 'Import Category',
+      cat_group: 'group2',
+    });
+    const ruleCategoryId = await db.insertCategory({
+      id: 'reconcile-rule-cat',
+      name: 'Reconcile Rule Category',
+      cat_group: 'group2',
+    });
+
+    const payeeId = await db.insertPayee({ name: 'Payeeimp' });
+    await insertRule({
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [{ op: 'is', field: 'payee', value: payeeId }],
+      actions: [{ op: 'set', field: 'category', value: ruleCategoryId }],
+    });
+
+    await reconcileTransactions(acctId, [
+      {
+        date: '2020-01-02',
+        payee_name: 'Payeeimp',
+        amount: -2947,
+        category: explicitCategoryId,
+        imported_id: 'reconcile-explicit-cat-1',
+      },
+    ]);
+
+    const [addedTransaction] = await getAllTransactions();
+    expect(addedTransaction.category).toBe(explicitCategoryId);
+    expect(addedTransaction.category).not.toBe(ruleCategoryId);
+  });
+
   test("reconcile does not merge transactions with different 'imported_id' values", async () => {
     const { id } = await prepareDatabase();
 
