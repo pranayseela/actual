@@ -246,13 +246,20 @@ describe('utility functions', () => {
     expect(shouldApplyRuleDiffField('notes', 'hello', 'worldhello', null)).toBe(
       true,
     );
+    expect(shouldApplyRuleDiffField('notes', 'a', 'ab', null)).toBe(true);
+    expect(shouldApplyRuleDiffField('notes', 'b', 'ab', null)).toBe(true);
     expect(shouldApplyRuleDiffField('notes', 'hello', 'world', null)).toBe(
       false,
     );
+    expect(shouldApplyRuleDiffField('notes', 'hello', 'helXlo', null)).toBe(
+      false,
+    );
     expect(shouldApplyRuleDiffField('notes', 'hello', 'hi', null)).toBe(false);
+    expect(shouldApplyRuleDiffField('notes', 'foo', 'bar', null)).toBe(false);
     expect(shouldApplyRuleDiffField('notes', '', 'note', null)).toBe(true);
     expect(shouldApplyRuleDiffField('category', 'a', 'b', null)).toBe(false);
     expect(shouldApplyRuleDiffField('category', null, 'b', null)).toBe(true);
     expect(shouldApplyRuleDiffField('notes', 'x', 'y', 'payee')).toBe(true);
+    expect(shouldApplyRuleDiffField('category', 'a', 'b', 'payee')).toBe(true);
   });
 });
