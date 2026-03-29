@@ -1,3 +1,4 @@
+import { currentDay } from 'loot-core/shared/months';
 import { q } from 'loot-core/shared/query';
 import type { AccountEntity, CategoryEntity } from 'loot-core/types/models';
 
@@ -16,11 +17,28 @@ const categoryParametrizedField = parametrizedField<'category'>();
 const envelopeParametrizedField = parametrizedField<'envelope-budget'>();
 const trackingParametrizedField = parametrizedField<'tracking-budget'>();
 
+/**
+ * Merges `date: { $lte: currentDay() }` into filters for every account-balance binding
+ * below, so totals exclude future-dated rows and align better with real-world balances.
+ *
+ * Call sites include the sidebar, "All / On budget / Off budget" headers, closed-account
+ * totals, and the same bindings reused from reconcile, mobile, and the command bar.
+ *
+ * `currentDay()` lives in `loot-core/shared/months` (local calendar date; same "today" as
+ * future-dated styling in the transaction list). Per-account bindings use `splits: 'none'`
+ * (split parents only). Each row has one booking `date`, including each leg of a transfer.
+ *
+ * @see https://github.com/actualbudget/actual/issues/2354
+ */
+function throughTodayFilter(expr: Record<string, unknown>) {
+  return { ...expr, date: { $lte: currentDay() } };
+}
+
 export function accountBalance(accountId: AccountEntity['id']) {
   return {
     name: accountParametrizedField('balance')(accountId),
     query: q('transactions')
-      .filter({ account: accountId })
+      .filter(throughTodayFilter({ account: accountId }))
       .options({ splits: 'none' })
       .calculate({ $sum: '$amount' }),
   } satisfies Binding<'account', 'balance'>;
@@ -30,7 +48,7 @@ export function accountBalanceCleared(accountId: AccountEntity['id']) {
   return {
     name: accountParametrizedField('balanceCleared')(accountId),
     query: q('transactions')
-      .filter({ account: accountId, cleared: true })
+      .filter(throughTodayFilter({ account: accountId, cleared: true }))
       .options({ splits: 'none' })
       .calculate({ $sum: '$amount' }),
   } satisfies Binding<'account', 'balanceCleared'>;
@@ -40,7 +58,7 @@ export function accountBalanceUncleared(accountId: AccountEntity['id']) {
   return {
     name: accountParametrizedField('balanceUncleared')(accountId),
     query: q('transactions')
-      .filter({ account: accountId, cleared: false })
+      .filter(throughTodayFilter({ account: accountId, cleared: false }))
       .options({ splits: 'none' })
       .calculate({ $sum: '$amount' }),
   } satisfies Binding<'account', 'balanceUncleared'>;
@@ -49,7 +67,7 @@ export function accountBalanceUncleared(accountId: AccountEntity['id']) {
 export function allAccountBalance() {
   return {
     query: q('transactions')
-      .filter({ 'account.closed': false })
+      .filter(throughTodayFilter({ 'account.closed': false }))
       .calculate({ $sum: '$amount' }),
     name: 'accounts-balance',
   } satisfies Binding<'account', 'accounts-balance'>;
@@ -59,7 +77,12 @@ export function onBudgetAccountBalance() {
   return {
     name: `onbudget-accounts-balance`,
     query: q('transactions')
-      .filter({ 'account.offbudget': false, 'account.closed': false })
+      .filter(
+        throughTodayFilter({
+          'account.offbudget': false,
+          'account.closed': false,
+        }),
+      )
       .calculate({ $sum: '$amount' }),
   } satisfies Binding<'account', 'onbudget-accounts-balance'>;
 }
@@ -68,7 +91,12 @@ export function offBudgetAccountBalance() {
   return {
     name: `offbudget-accounts-balance`,
     query: q('transactions')
-      .filter({ 'account.offbudget': true, 'account.closed': false })
+      .filter(
+        throughTodayFilter({
+          'account.offbudget': true,
+          'account.closed': false,
+        }),
+      )
       .calculate({ $sum: '$amount' }),
   } satisfies Binding<'account', 'offbudget-accounts-balance'>;
 }
@@ -77,7 +105,7 @@ export function closedAccountBalance() {
   return {
     name: `closed-accounts-balance`,
     query: q('transactions')
-      .filter({ 'account.closed': true })
+      .filter(throughTodayFilter({ 'account.closed': true }))
       .calculate({ $sum: '$amount' }),
   } satisfies Binding<'account', 'closed-accounts-balance'>;
 }
