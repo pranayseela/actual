@@ -19,6 +19,15 @@ import { useFormat } from '@desktop-client/hooks/useFormat';
 import { useLocale } from '@desktop-client/hooks/useLocale';
 import { usePayees } from '@desktop-client/hooks/usePayees';
 
+function isLikelyEntityId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
 type ValueProps<T> = {
   value: T;
   field: unknown;
@@ -124,6 +133,12 @@ export function Value<T>({
         case 'account':
         case 'rule':
           if (valueIsRaw) {
+            if (isLikelyEntityId(value) && data && Array.isArray(data)) {
+              const item = data.find(item => item.id === value);
+              if (item) {
+                return describe(item);
+              }
+            }
             return value;
           }
           if (data && Array.isArray(data)) {
