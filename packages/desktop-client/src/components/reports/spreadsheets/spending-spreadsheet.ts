@@ -2,6 +2,7 @@ import { send } from '@actual-app/core/platform/client/connection';
 import * as monthUtils from '@actual-app/core/shared/months';
 import { q } from '@actual-app/core/shared/query';
 import type {
+  CategoryEntity,
   RuleConditionEntity,
   SpendingEntity,
   SpendingMonthEntity,
@@ -43,21 +44,26 @@ export function createSpendingSpreadsheet({
     spreadsheet: ReturnType<typeof useSpreadsheet>,
     setData: (data: SpendingEntity) => void,
   ) => {
-    const { filters } = await send('make-filters-from-conditions', {
-      conditions: conditions.filter(cond => !cond.customName),
-    });
-
-    const { filters: budgetFilters } = await send(
-      'make-filters-from-conditions',
-      {
-        conditions: conditions.filter(
-          cond => !cond.customName && cond.field === 'category',
-        ),
-        applySpecialCases: false,
-      },
-    );
+    const [{ filters }, { filters: budgetFilters }, { list: categories }] =
+      await Promise.all([
+        send('make-filters-from-conditions', {
+          conditions: conditions.filter(cond => !cond.customName),
+        }),
+        send('make-filters-from-conditions', {
+          conditions: conditions.filter(
+            cond => !cond.customName && cond.field === 'category',
+          ),
+          applySpecialCases: false,
+        }),
+        send('get-categories'),
+      ]);
 
     const conditionsOpKey = conditionsOp === 'or' ? '$or' : '$and';
+    const expenseCategoryIds = new Set(
+      categories
+        .filter((category: CategoryEntity) => !category.is_income)
+        .map((category: CategoryEntity) => category.id),
+    );
 
     const [assets, debts] = await Promise.all([
       aqlQuery(
@@ -133,9 +139,13 @@ export function createSpendingSpreadsheet({
       ).then(({ data }) => data),
     ]);
 
-    const dailyBudget =
-      budgets &&
-      budgets.reduce((a, v) => a + v.amount, 0) / compareInterval.length;
+    const totalBudgetAmount =
+      budgets?.reduce(
+        (sum, budget) =>
+          expenseCategoryIds.has(budget.category) ? sum + budget.amount : sum,
+        0,
+      ) ?? 0;
+    const dailyBudget = totalBudgetAmount / compareInterval.length;
 
     const intervals = monthUtils.dayRangeInclusive(startDate, endDate);
     if (endDateTo < startDate || startDateTo > endDate) {
